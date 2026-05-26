@@ -20,7 +20,7 @@ jobs:
 
   release:
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,15 +28,30 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.20.x'
+      - uses: microsoft/setup-msbuild@v2
       - name: Build Windows artifacts
+        shell: pwsh
         run: |
-          mkdir -p dist
-          GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/tato-agent-ai-windows-amd64.exe ./cmd/tato-agent-ai
-          GOOS=windows GOARCH=386 go build -trimpath -ldflags="-s -w" -o dist/tato-agent-ai-windows-386.exe ./cmd/tato-agent-ai
-          cd dist
-          zip tato-agent-ai-windows-amd64.zip tato-agent-ai-windows-amd64.exe
-          zip tato-agent-ai-windows-386.zip tato-agent-ai-windows-386.exe
+          New-Item -ItemType Directory -Force dist | Out-Null
+
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
+          go build -trimpath -ldflags="-s -w" -o dist/agent-full-windows-x64.exe ./cmd/tato-agent-ai
+          Compress-Archive -Path dist/agent-full-windows-x64.exe -DestinationPath dist/agent-full-windows-x64.zip -Force
+
+          $env:GOARCH = "386"
+          go build -trimpath -ldflags="-s -w" -o dist/agent-full-windows-x86.exe ./cmd/tato-agent-ai
+          Compress-Archive -Path dist/agent-full-windows-x86.exe -DestinationPath dist/agent-full-windows-x86.zip -Force
+
+          msbuild agent-readonly/AgentReadonly.csproj /p:Configuration=Release /p:Platform=x64
+          Copy-Item agent-readonly/CONTEXT.example.md agent-readonly/bin/x64/Release/CONTEXT.example.md
+          Compress-Archive -Path agent-readonly/bin/x64/Release/agent-readonly.exe,agent-readonly/bin/x64/Release/CONTEXT.example.md -DestinationPath dist/agent-readonly-windows-x64.zip -Force
+
+          msbuild agent-readonly/AgentReadonly.csproj /p:Configuration=Release /p:Platform=x86
+          Copy-Item agent-readonly/CONTEXT.example.md agent-readonly/bin/x86/Release/CONTEXT.example.md
+          Compress-Archive -Path agent-readonly/bin/x86/Release/agent-readonly.exe,agent-readonly/bin/x86/Release/CONTEXT.example.md -DestinationPath dist/agent-readonly-windows-x86.zip -Force
       - name: Move latest tag
+        shell: pwsh
         run: |
           git tag -f latest
           git push -f origin latest
@@ -49,5 +64,7 @@ jobs:
           prerelease: false
           make_latest: true
           files: |
-            dist/tato-agent-ai-windows-amd64.zip
-            dist/tato-agent-ai-windows-386.zip
+            dist/agent-full-windows-x64.zip
+            dist/agent-full-windows-x86.zip
+            dist/agent-readonly-windows-x64.zip
+            dist/agent-readonly-windows-x86.zip

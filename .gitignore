@@ -2,6 +2,9 @@
 /*.exe
 /*.jsonl
 /.openai-token
+.openai-api-key
 /dist/
+agent-readonly/bin/
+agent-readonly/obj/
 /.DS_Store
 /.vscode/

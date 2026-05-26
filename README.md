@@ -2,7 +2,12 @@
 
 Private minimal coding agent harness for local code work.
 
-## Features
+## Apps
+
+- `agent-full`: the existing Go command-line agent with local reads, writes, shell command execution, and OpenAI-hosted web search.
+- `agent-readonly`: a Windows desktop UI for asking questions about a local codebase. It can list, search, and read files, and it can use OpenAI-hosted web search. It cannot write files, run commands, or use MCP.
+
+## agent-full features
 
 - OpenAI Responses API client with function tools.
 - Interactive prompt loop.
@@ -13,7 +18,7 @@ Private minimal coding agent harness for local code work.
 - Optional JSONL transcript logging.
 - No MCP support.
 
-## Build
+## Build agent-full
 
 ```sh
 go build ./cmd/tato-agent-ai
@@ -39,3 +44,43 @@ Useful flags:
 - `--transcript session.jsonl`
 
 Inside the prompt, type `/exit` or `/quit` to stop.
+
+## Build agent-readonly
+
+`agent-readonly` is a .NET Framework 4.8 WPF app intended to run on Windows 7 SP1 and newer Windows versions that have .NET Framework 4.8 installed.
+
+```powershell
+.\agent-readonly\build.ps1
+```
+
+Runtime files next to `agent-readonly.exe`:
+
+- `.openai-api-key`: contains only the OpenAI API key.
+- `CONTEXT.md`: optional project guidance loaded into the agent instructions.
+
+Recommended `CONTEXT.md` structure:
+
+```md
+# Context
+
+## Purpose
+What this codebase does and who uses it.
+
+## Architecture
+Main apps/services, important directories, and how data flows.
+
+## Current Priorities
+What you are currently trying to understand or change.
+
+## Conventions
+Naming, style, testing expectations, and important design constraints.
+
+## Commands
+How to build, test, run, and inspect the project.
+
+## Ignore
+Directories/files the agent should avoid unless explicitly requested.
+
+## Glossary
+Domain terms, abbreviations, and project-specific vocabulary.
+```
