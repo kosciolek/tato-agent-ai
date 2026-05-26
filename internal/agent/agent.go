@@ -29,6 +29,7 @@ type Config struct {
 	Client       ResponseClient
 	Tools        ToolRunner
 	Transcript   *transcript.Logger
+	WebSearch    bool
 }
 
 type Agent struct {
@@ -52,7 +53,7 @@ func (a *Agent) Send(ctx context.Context, userInput string) (string, error) {
 		req := openai.CreateResponseRequest{
 			Model:              a.cfg.Model,
 			Input:              input,
-			Tools:              a.cfg.Tools.Definitions(),
+			Tools:              a.toolDefinitions(),
 			ToolChoice:         "auto",
 			PreviousResponseID: a.previousResponseID,
 		}
@@ -76,6 +77,10 @@ func (a *Agent) Send(ctx context.Context, userInput string) (string, error) {
 							final.WriteString("\n")
 						}
 						final.WriteString(part.Text)
+						citations := formatCitations(part.Annotations)
+						if citations != "" {
+							final.WriteString(citations)
+						}
 					}
 				}
 			case "function_call":
@@ -110,6 +115,34 @@ func (a *Agent) Send(ctx context.Context, userInput string) (string, error) {
 	}
 
 	return final.String(), fmt.Errorf("stopped after %d tool rounds", maxToolRounds)
+}
+
+func (a *Agent) toolDefinitions() []openai.Tool {
+	defs := append([]openai.Tool{}, a.cfg.Tools.Definitions()...)
+	if a.cfg.WebSearch {
+		defs = append(defs, openai.Tool{Type: "web_search_preview"})
+	}
+	return defs
+}
+
+func formatCitations(annotations []openai.Annotation) string {
+	seen := make(map[string]bool)
+	var lines []string
+	for _, annotation := range annotations {
+		if annotation.Type != "url_citation" || annotation.URL == "" || seen[annotation.URL] {
+			continue
+		}
+		seen[annotation.URL] = true
+		if annotation.Title != "" {
+			lines = append(lines, fmt.Sprintf("- %s: %s", annotation.Title, annotation.URL))
+		} else {
+			lines = append(lines, "- "+annotation.URL)
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return "\n\nSources:\n" + strings.Join(lines, "\n")
 }
 
 var _ ToolRunner = (*tools.Runner)(nil)

@@ -1,5 +1,7 @@
 /tato-agent-ai
 /*.exe
 /*.jsonl
+/.openai-token
 /dist/
 /.DS_Store
+/.vscode/

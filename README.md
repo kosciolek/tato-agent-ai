@@ -9,6 +9,7 @@ Private minimal coding agent harness for local code work.
 - Local file listing, reading, text search, file writing, and shell command execution.
 - Ask-before-write/execute by default.
 - `--bypass-permissions` mode for unattended local side effects.
+- Optional OpenAI-hosted web search.
 - Optional JSONL transcript logging.
 - No MCP support.
 
@@ -27,11 +28,15 @@ export OPENAI_API_KEY=...
 ./tato-agent-ai --cwd /path/to/project
 ```
 
+If `OPENAI_API_KEY` is not set, the harness reads an API token from `.openai-token`
+in the selected `--cwd` directory. The file should contain only the token.
+
 Useful flags:
 
 - `--model gpt-5.5`
 - `--cwd .`
 - `--bypass-permissions`
+- `--web-search`
 - `--transcript session.jsonl`
 
 Inside the prompt, type `/exit` or `/quit` to stop.

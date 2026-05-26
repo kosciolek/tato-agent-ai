@@ -13,10 +13,10 @@ type CreateResponseRequest struct {
 
 type Tool struct {
 	Type        string                 `json:"type"`
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	Parameters  map[string]interface{} `json:"parameters"`
-	Strict      bool                   `json:"strict"`
+	Name        string                 `json:"name,omitempty"`
+	Description string                 `json:"description,omitempty"`
+	Parameters  map[string]interface{} `json:"parameters,omitempty"`
+	Strict      bool                   `json:"strict,omitempty"`
 }
 
 type Response struct {
@@ -35,8 +35,15 @@ type OutputItem struct {
 }
 
 type ContentPart struct {
-	Type string `json:"type"`
-	Text string `json:"text,omitempty"`
+	Type        string       `json:"type"`
+	Text        string       `json:"text,omitempty"`
+	Annotations []Annotation `json:"annotations,omitempty"`
+}
+
+type Annotation struct {
+	Type  string `json:"type"`
+	URL   string `json:"url,omitempty"`
+	Title string `json:"title,omitempty"`
 }
 
 type FunctionCallOutput struct {

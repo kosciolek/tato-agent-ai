@@ -78,3 +78,71 @@ func TestAgentFeedsToolOutputBackToResponses(t *testing.T) {
 		t.Fatalf("tool output = %#v", items[0])
 	}
 }
+
+func TestAgentAddsWebSearchToolWhenEnabled(t *testing.T) {
+	client := &fakeClient{resps: []*openai.Response{
+		{
+			ID: "resp_1",
+			Output: []openai.OutputItem{
+				{Type: "message", Content: []openai.ContentPart{{Type: "output_text", Text: "ok"}}},
+			},
+		},
+	}}
+	a := New(Config{
+		Model:        "test-model",
+		Instructions: "test instructions",
+		Client:       client,
+		Tools:        fakeTools{},
+		WebSearch:    true,
+	})
+
+	if _, err := a.Send(context.Background(), "latest?"); err != nil {
+		t.Fatal(err)
+	}
+	if len(client.requests) != 1 {
+		t.Fatalf("requests = %d", len(client.requests))
+	}
+	found := false
+	for _, tool := range client.requests[0].Tools {
+		if tool.Type == "web_search_preview" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("missing web_search_preview tool: %#v", client.requests[0].Tools)
+	}
+}
+
+func TestAgentFormatsURLCitations(t *testing.T) {
+	client := &fakeClient{resps: []*openai.Response{
+		{
+			ID: "resp_1",
+			Output: []openai.OutputItem{
+				{
+					Type: "message",
+					Content: []openai.ContentPart{{
+						Type: "output_text",
+						Text: "answer",
+						Annotations: []openai.Annotation{
+							{Type: "url_citation", Title: "Example", URL: "https://example.com"},
+						},
+					}},
+				},
+			},
+		},
+	}}
+	a := New(Config{
+		Model:        "test-model",
+		Instructions: "test instructions",
+		Client:       client,
+		Tools:        fakeTools{},
+	})
+
+	out, err := a.Send(context.Background(), "cite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Sources:") || !strings.Contains(out, "https://example.com") {
+		t.Fatalf("missing citation: %q", out)
+	}
+}
