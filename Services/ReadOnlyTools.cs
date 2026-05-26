@@ -18,6 +18,7 @@ namespace AgentReadonly.Services
         public ReadOnlyTools(string root)
         {
             Root = Path.GetFullPath(root);
+            AppLog.Info("ReadOnlyTools initialized: root=" + Root);
         }
 
         public string Root { get; private set; }
@@ -54,6 +55,7 @@ namespace AgentReadonly.Services
         public string Run(string name, string argumentsJson)
         {
             Dictionary<string, object> args = DecodeArgs(argumentsJson);
+            AppLog.Debug("ReadOnlyTools dispatch: name=" + name + " decoded_args=" + AppLog.Truncate(serializer.Serialize(args)));
             switch (name)
             {
                 case "list_files":
@@ -69,23 +71,32 @@ namespace AgentReadonly.Services
 
         private Dictionary<string, object> DecodeArgs(string json)
         {
-            if (string.IsNullOrWhiteSpace(json))
-                return new Dictionary<string, object>();
+            try
+            {
+                if (string.IsNullOrWhiteSpace(json))
+                    return new Dictionary<string, object>();
 
-            object parsed = serializer.DeserializeObject(json);
-            string encoded = parsed as string;
-            if (encoded != null)
-                parsed = serializer.DeserializeObject(encoded);
+                object parsed = serializer.DeserializeObject(json);
+                string encoded = parsed as string;
+                if (encoded != null)
+                    parsed = serializer.DeserializeObject(encoded);
 
-            Dictionary<string, object> map = parsed as Dictionary<string, object>;
-            if (map == null)
-                throw new InvalidOperationException("Tool arguments were not a JSON object.");
-            return map;
+                Dictionary<string, object> map = parsed as Dictionary<string, object>;
+                if (map == null)
+                    throw new InvalidOperationException("Tool arguments were not a JSON object.");
+                return map;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("Tool arguments decode failed: json=" + AppLog.Truncate(json), ex);
+                throw;
+            }
         }
 
         private string ListFiles(Dictionary<string, object> args)
         {
             string dir = Resolve(GetString(args, "path"));
+            AppLog.Info("Tool list_files resolved: dir=" + dir);
             if (!Directory.Exists(dir))
                 throw new DirectoryNotFoundException(dir);
 
@@ -103,6 +114,7 @@ namespace AgentReadonly.Services
                 builder.AppendLine(entries[i]);
             if (entries.Count > limit)
                 builder.AppendLine("... truncated after " + limit + " entries");
+            AppLog.Info("Tool list_files complete: dir=" + dir + " entries=" + entries.Count + " returned=" + Math.Min(entries.Count, limit));
             return builder.ToString();
         }
 
@@ -113,6 +125,7 @@ namespace AgentReadonly.Services
                 throw new InvalidOperationException("path is required");
 
             string path = Resolve(requestedPath);
+            AppLog.Info("Tool read_file resolved: path=" + path);
             if (!File.Exists(path))
                 throw new FileNotFoundException(path);
 
@@ -137,6 +150,7 @@ namespace AgentReadonly.Services
 
             if (truncated)
                 text += Environment.NewLine + "... truncated at " + maxBytes + " bytes";
+            AppLog.Info("Tool read_file complete: path=" + path + " bytes_read=" + data.Length + " output_chars=" + text.Length + " truncated=" + truncated);
             return text;
         }
 
@@ -155,6 +169,7 @@ namespace AgentReadonly.Services
                 limit = DefaultSearchLimit;
 
             bool regex = GetBool(args, "regex", false);
+            AppLog.Info("Tool search_text resolved: base_dir=" + baseDir + " regex=" + regex + " limit=" + limit + " pattern=" + AppLog.Truncate(pattern));
             Regex compiled = null;
             if (regex)
                 compiled = new Regex(pattern, RegexOptions.Compiled);
@@ -199,6 +214,7 @@ namespace AgentReadonly.Services
                 }
             }
 
+            AppLog.Info("Tool search_text complete: base_dir=" + baseDir + " results=" + results.Count);
             return results.Count == 0 ? "no matches" : string.Join(Environment.NewLine, results.ToArray());
         }
 
@@ -217,8 +233,9 @@ namespace AgentReadonly.Services
                     subdirs = Directory.GetDirectories(dir);
                     files = Directory.GetFiles(dir);
                 }
-                catch
+                catch (Exception ex)
                 {
+                    AppLog.Warn("Tool enumerate skipped directory: dir=" + dir + " error=" + ex.Message);
                     continue;
                 }
 

@@ -1,6 +1,8 @@
 using AgentReadonly.Services;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -21,23 +23,46 @@ namespace AgentReadonly
         private AppSettings settings;
         private AgentSession session;
         private CancellationTokenSource activeRequest;
+        private readonly UsageLedger usageLedger = new UsageLedger();
+        private readonly UpdateChecker updateChecker = new UpdateChecker();
+        private readonly UpdateInstaller updateInstaller = new UpdateInstaller();
+        private UsageSummary usageSummary = new UsageSummary();
+        private double sessionSpendUsd;
+        private CancellationTokenSource updateLoop;
+        private UpdateCheckResult pendingUpdate;
+        private bool updateInstalling;
 
         public MainWindow()
         {
             InitializeComponent();
+            AppLog.Info("MainWindow initializing.");
 
             TranscriptBox.Document = new FlowDocument();
             settings = AppSettings.Load();
+            usageSummary = usageLedger.LoadSummary();
             ModelBox.Text = settings.Model;
             ApplyFontSize();
             UpdateFolderText();
+            UpdateSpendText();
             SetStatus("");
 
             Loaded += delegate
             {
+                AppLog.Info("MainWindow loaded: project_root=" + (settings.ProjectRoot ?? "") + " model=" + settings.Model + " font_size=" + settings.FontSize);
                 PromptBox.Focus();
                 if (string.IsNullOrWhiteSpace(settings.ProjectRoot) || !Directory.Exists(settings.ProjectRoot))
                     ChooseFolder();
+                StartUpdateLoop();
+            };
+
+            Closed += delegate
+            {
+                if (updateLoop != null)
+                {
+                    updateLoop.Cancel();
+                    updateLoop.Dispose();
+                    updateLoop = null;
+                }
             };
         }
 
@@ -77,6 +102,7 @@ namespace AgentReadonly
             if (!ValidateReady())
                 return;
 
+            AppLog.Info("SendPrompt accepted: prompt_chars=" + prompt.Length + " project_root=" + settings.ProjectRoot);
             string apiKey;
             try
             {
@@ -84,6 +110,7 @@ namespace AgentReadonly
             }
             catch (Exception ex)
             {
+                AppLog.Error("Failed to read API key.", ex);
                 AddSystemMessage(ex.Message + Environment.NewLine + "Expected file: " + AppPaths.ApiKeyPath);
                 return;
             }
@@ -96,7 +123,10 @@ namespace AgentReadonly
             settings.Save();
 
             if (session == null)
+            {
+                AppLog.Info("Creating new AgentSession for model=" + model + " project_root=" + settings.ProjectRoot);
                 session = new AgentSession(model, settings.ProjectRoot, apiKey, AppSettings.ReadContext());
+            }
 
             PromptBox.Clear();
             AddUserMessage(prompt);
@@ -108,16 +138,19 @@ namespace AgentReadonly
                 string answer = await session.SendAsync(
                     prompt,
                     text => Dispatcher.Invoke(delegate { SetStatus(text); }),
+                    RecordUsage,
                     activeRequest.Token);
 
                 AddAssistantMessage(string.IsNullOrWhiteSpace(answer) ? "(No text response.)" : answer);
             }
             catch (OperationCanceledException)
             {
+                AppLog.Warn("SendPrompt canceled by user.");
                 AddSystemMessage("Request canceled.");
             }
             catch (Exception ex)
             {
+                AppLog.Error("SendPrompt failed.", ex);
                 AddSystemMessage("Error: " + ex.Message);
             }
             finally
@@ -127,6 +160,7 @@ namespace AgentReadonly
                 SetBusy(false);
                 SetStatus("Ready");
                 PromptBox.Focus();
+                AppLog.Info("SendPrompt finished.");
             }
         }
 
@@ -135,6 +169,7 @@ namespace AgentReadonly
             if (string.IsNullOrWhiteSpace(settings.ProjectRoot) || !Directory.Exists(settings.ProjectRoot))
             {
                 AddSystemMessage("Choose a codebase folder before asking a question.");
+                AppLog.Warn("Validation failed: missing or invalid project root=" + (settings.ProjectRoot ?? ""));
                 ChooseFolder();
                 return false;
             }
@@ -161,6 +196,7 @@ namespace AgentReadonly
                     settings.Save();
                     session = null;
                     UpdateFolderText();
+                    AppLog.Info("Codebase folder selected: " + settings.ProjectRoot);
                     AddSystemMessage("Codebase folder set to: " + settings.ProjectRoot);
                 }
             }
@@ -176,6 +212,7 @@ namespace AgentReadonly
                 settings.Model = model;
                 settings.Save();
                 session = null;
+                AppLog.Info("Model changed: " + model);
                 AddSystemMessage("Model set to: " + model);
             }
             ModelBox.Text = model;
@@ -204,12 +241,114 @@ namespace AgentReadonly
             messages.Clear();
             TranscriptBox.Document.Blocks.Clear();
             session = null;
+            AppLog.Info("Transcript cleared and session reset.");
         }
 
         private void Stop_Click(object sender, RoutedEventArgs e)
         {
             if (activeRequest != null)
+            {
+                AppLog.Warn("Stop requested by user.");
                 activeRequest.Cancel();
+            }
+        }
+
+        private async void Update_Click(object sender, RoutedEventArgs e)
+        {
+            if (pendingUpdate == null || updateInstalling)
+                return;
+
+            updateInstalling = true;
+            UpdateButton.IsEnabled = false;
+            UpdateButton.Content = "Updating...";
+            AddSystemMessage("Downloading update. The app will restart when it is ready.");
+
+            try
+            {
+                await updateInstaller.StageAndLaunchAsync(pendingUpdate, Process.GetCurrentProcess().Id, CancellationToken.None);
+                AppLog.Info("Update staged, shutting down for replacement.");
+                Application.Current.Shutdown();
+            }
+            catch (Exception ex)
+            {
+                updateInstalling = false;
+                UpdateButton.IsEnabled = true;
+                UpdateButton.Content = "Update";
+                AppLog.Error("Update failed.", ex);
+                AddSystemMessage("Update failed: " + ex.Message);
+            }
+        }
+
+        private void StartUpdateLoop()
+        {
+            if (updateLoop != null)
+                return;
+            if (!Environment.Is64BitProcess)
+            {
+                AppLog.Info("Update checks skipped because this is not a 64-bit process.");
+                return;
+            }
+
+            updateLoop = new CancellationTokenSource();
+            CancellationToken token = updateLoop.Token;
+            Task.Run(async delegate
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    await CheckForUpdatesOnce(token);
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromMinutes(10), token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                    }
+                }
+            }, token);
+        }
+
+        private async Task CheckForUpdatesOnce(CancellationToken token)
+        {
+            try
+            {
+                UpdateCheckResult result = await updateChecker.CheckAsync(token);
+                if (token.IsCancellationRequested)
+                    return;
+
+                await Dispatcher.InvokeAsync(delegate
+                {
+                    ApplyUpdateCheckResult(result);
+                });
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("Update check failed.", ex);
+            }
+        }
+
+        private void ApplyUpdateCheckResult(UpdateCheckResult result)
+        {
+            if (updateInstalling)
+                return;
+
+            if (result != null && result.IsUpdateAvailable)
+            {
+                pendingUpdate = result;
+                string remoteCommit = result.RemoteManifest == null ? "" : (result.RemoteManifest.commit ?? "");
+                string shortCommit = remoteCommit.Length > 12 ? remoteCommit.Substring(0, 12) : remoteCommit;
+                UpdateButton.ToolTip = "Install latest build " + shortCommit;
+                UpdateButton.Content = "Update";
+                UpdateButton.IsEnabled = true;
+                UpdateButton.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                pendingUpdate = null;
+                UpdateButton.Visibility = Visibility.Collapsed;
+            }
         }
 
         private void SetBusy(bool busy)
@@ -219,6 +358,8 @@ namespace AgentReadonly
             ChooseFolderButton.IsEnabled = !busy;
             ModelBox.IsEnabled = !busy;
             PromptBox.IsEnabled = !busy;
+            if (!updateInstalling && pendingUpdate != null)
+                UpdateButton.IsEnabled = !busy;
             ThinkingOverlay.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
         }
 
@@ -230,9 +371,38 @@ namespace AgentReadonly
 
         private void UpdateFolderText()
         {
-            FolderText.Text = string.IsNullOrWhiteSpace(settings.ProjectRoot)
+            FolderPathText.Text = string.IsNullOrWhiteSpace(settings.ProjectRoot)
                 ? "No codebase folder selected"
-                : "Codebase: " + settings.ProjectRoot;
+                : settings.ProjectRoot;
+        }
+
+        private void RecordUsage(UsageEntry entry)
+        {
+            UsageSummary summary = usageLedger.Add(entry);
+            Dispatcher.Invoke(delegate
+            {
+                sessionSpendUsd += entry.CostUsd;
+                usageSummary = summary;
+                UpdateSpendText();
+            });
+        }
+
+        private void UpdateSpendText()
+        {
+            SpendText.Text =
+                "Spent: session " + FormatUsd(sessionSpendUsd) +
+                "  today " + FormatUsd(usageSummary.TodayUsd) +
+                "  30d " + FormatUsd(usageSummary.Last30DaysUsd) +
+                (usageSummary.HasUnpricedUsage ? "  + unpriced usage" : "");
+        }
+
+        private string FormatUsd(double value)
+        {
+            if (value <= 0)
+                return "$0.00";
+            if (value < 0.01)
+                return "$" + value.ToString("0.0000", CultureInfo.InvariantCulture);
+            return "$" + value.ToString("0.00", CultureInfo.InvariantCulture);
         }
 
         private void ApplyFontSize()

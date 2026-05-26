@@ -24,7 +24,10 @@ namespace AgentReadonly.Services
             try
             {
                 if (!File.Exists(AppPaths.SettingsPath))
+                {
+                    AppLog.Info("Settings file not found, using defaults: " + AppPaths.SettingsPath);
                     return settings;
+                }
 
                 string json = File.ReadAllText(AppPaths.SettingsPath);
                 AppSettings loaded = new JavaScriptSerializer().Deserialize<AppSettings>(json);
@@ -38,11 +41,13 @@ namespace AgentReadonly.Services
                 if (loaded.FontSize >= 12 && loaded.FontSize <= 42)
                     settings.FontSize = loaded.FontSize;
             }
-            catch
+            catch (Exception ex)
             {
+                AppLog.Error("Settings load failed, using defaults: " + AppPaths.SettingsPath, ex);
                 return settings;
             }
 
+            AppLog.Info("Settings loaded: path=" + AppPaths.SettingsPath + " project_root=" + (settings.ProjectRoot ?? "") + " model=" + settings.Model + " font_size=" + settings.FontSize);
             return settings;
         }
 
@@ -54,6 +59,7 @@ namespace AgentReadonly.Services
 
             string json = new JavaScriptSerializer().Serialize(this);
             File.WriteAllText(AppPaths.SettingsPath, json);
+            AppLog.Info("Settings saved: path=" + AppPaths.SettingsPath + " project_root=" + (ProjectRoot ?? "") + " model=" + Model + " font_size=" + FontSize);
         }
 
         public static string ReadApiKey()
@@ -65,14 +71,20 @@ namespace AgentReadonly.Services
             if (string.IsNullOrWhiteSpace(key))
                 throw new InvalidOperationException(".openai-api-key is empty.");
 
+            AppLog.Info("API key loaded: path=" + AppPaths.ApiKeyPath + " chars=" + key.Length);
             return key;
         }
 
         public static string ReadContext()
         {
             if (!File.Exists(AppPaths.ContextPath))
+            {
+                AppLog.Info("Context file not found: " + AppPaths.ContextPath);
                 return "";
-            return File.ReadAllText(AppPaths.ContextPath);
+            }
+            string context = File.ReadAllText(AppPaths.ContextPath);
+            AppLog.Info("Context loaded: path=" + AppPaths.ContextPath + " chars=" + context.Length);
+            return context;
         }
     }
 }

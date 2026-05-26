@@ -10,62 +10,46 @@ permissions:
   contents: write
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.20.x'
-      - run: go test ./...
-
   release:
-    needs: test
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.20.x'
       - uses: microsoft/setup-msbuild@v2
-      - name: Build Windows artifacts
+      - name: Build Windows x64 artifact
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
+          $commit = git rev-parse HEAD
+          $builtAtUtc = (Get-Date).ToUniversalTime().ToString("o")
 
-          $env:GOOS = "windows"
-          $env:GOARCH = "amd64"
-          go build -trimpath -ldflags="-s -w" -o dist/agent-full-windows-x64.exe ./cmd/tato-agent-ai
-          Compress-Archive -Path dist/agent-full-windows-x64.exe -DestinationPath dist/agent-full-windows-x64.zip -Force
+          msbuild AgentReadonly.csproj /p:Configuration=Release /p:Platform=x64
+          Copy-Item CONTEXT.example.md bin/x64/Release/CONTEXT.example.md
+          @{
+            commit = $commit
+            built_at_utc = $builtAtUtc
+            asset_name = "agent-readonly-windows-x64.zip"
+          } | ConvertTo-Json | Set-Content -Encoding UTF8 bin/x64/Release/build-info.json
 
-          $env:GOARCH = "386"
-          go build -trimpath -ldflags="-s -w" -o dist/agent-full-windows-x86.exe ./cmd/tato-agent-ai
-          Compress-Archive -Path dist/agent-full-windows-x86.exe -DestinationPath dist/agent-full-windows-x86.zip -Force
-
-          msbuild agent-readonly/AgentReadonly.csproj /p:Configuration=Release /p:Platform=x64
-          Copy-Item agent-readonly/CONTEXT.example.md agent-readonly/bin/x64/Release/CONTEXT.example.md
-          Compress-Archive -Path agent-readonly/bin/x64/Release/agent-readonly.exe,agent-readonly/bin/x64/Release/CONTEXT.example.md -DestinationPath dist/agent-readonly-windows-x64.zip -Force
-
-          msbuild agent-readonly/AgentReadonly.csproj /p:Configuration=Release /p:Platform=x86
-          Copy-Item agent-readonly/CONTEXT.example.md agent-readonly/bin/x86/Release/CONTEXT.example.md
-          Compress-Archive -Path agent-readonly/bin/x86/Release/agent-readonly.exe,agent-readonly/bin/x86/Release/CONTEXT.example.md -DestinationPath dist/agent-readonly-windows-x86.zip -Force
-      - name: Move latest tag
-        shell: pwsh
-        run: |
-          git tag -f latest
-          git push -f origin latest
+          Compress-Archive -Path bin/x64/Release/agent-readonly.exe,bin/x64/Release/CONTEXT.example.md,bin/x64/Release/build-info.json -DestinationPath dist/agent-readonly-windows-x64.zip -Force
+          $readonlyX64Sha = (Get-FileHash dist/agent-readonly-windows-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          @{
+            commit = $commit
+            built_at_utc = $builtAtUtc
+            asset_name = "agent-readonly-windows-x64.zip"
+            sha256 = $readonlyX64Sha
+          } | ConvertTo-Json | Set-Content -Encoding UTF8 dist/agent-readonly-windows-x64.manifest.json
       - name: Publish latest release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
-          name: latest
-          body: Automated build from main.
+          tag_name: main-${{ github.run_number }}-${{ github.sha }}
+          target_commitish: ${{ github.sha }}
+          name: main ${{ github.sha }}
+          body: Automated build from main commit ${{ github.sha }}.
           prerelease: false
           make_latest: true
+          fail_on_unmatched_files: true
           files: |
-            dist/agent-full-windows-x64.zip
-            dist/agent-full-windows-x86.zip
             dist/agent-readonly-windows-x64.zip
-            dist/agent-readonly-windows-x86.zip
+            dist/agent-readonly-windows-x64.manifest.json

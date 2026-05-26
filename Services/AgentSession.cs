@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,15 +26,18 @@ namespace AgentReadonly.Services
             client = new OpenAiClient(apiKey);
             tools = new ReadOnlyTools(projectRoot);
             instructions = BuildInstructions(projectRoot, contextText);
+            AppLog.Info("AgentSession created: model=" + model + " project_root=" + projectRoot + " context_chars=" + (contextText ?? "").Length);
         }
 
-        public async Task<string> SendAsync(string userInput, Action<string> status, CancellationToken cancellationToken)
+        public async Task<string> SendAsync(string userInput, Action<string> status, Action<UsageEntry> usageRecorded, CancellationToken cancellationToken)
         {
             object input = userInput;
             StringBuilder final = new StringBuilder();
+            AppLog.Info("Prompt send start: chars=" + (userInput ?? "").Length + " has_previous_response=" + (!string.IsNullOrEmpty(previousResponseId)));
 
             for (int round = 0; round < MaxToolRounds; round++)
             {
+                AppLog.Info("Agent round start: round=" + (round + 1) + " input_kind=" + DescribeInput(input));
                 Dictionary<string, object> request = new Dictionary<string, object>
                 {
                     { "model", model },
@@ -52,6 +56,18 @@ namespace AgentReadonly.Services
 
                 Dictionary<string, object> response = await client.CreateResponseAsync(request, cancellationToken).ConfigureAwait(false);
                 previousResponseId = GetString(response, "id");
+                AppLog.Info("Agent round response: round=" + (round + 1) + " response_id=" + previousResponseId + " output_items=" + GetArray(response, "output").Length);
+                if (usageRecorded != null)
+                {
+                    UsageEntry usageEntry = UsageLedger.FromResponse(model, response);
+                    AppLog.Info("Usage response: model=" + usageEntry.Model +
+                        " input_tokens=" + usageEntry.InputTokens +
+                        " cached_input_tokens=" + usageEntry.CachedInputTokens +
+                        " output_tokens=" + usageEntry.OutputTokens +
+                        " web_search_calls=" + usageEntry.WebSearchCalls +
+                        " cost_usd=" + usageEntry.CostUsd.ToString("0.000000"));
+                    usageRecorded(usageEntry);
+                }
 
                 List<Dictionary<string, object>> toolOutputs = new List<Dictionary<string, object>>();
                 object[] outputItems = GetArray(response, "output");
@@ -72,15 +88,22 @@ namespace AgentReadonly.Services
                         string callId = GetString(item, "call_id");
                         string arguments = ArgumentsToJson(item.ContainsKey("arguments") ? item["arguments"] : null);
                         string toolOutput;
+                        Stopwatch toolStopwatch = Stopwatch.StartNew();
+                        AppLog.Info("Tool call start: round=" + (round + 1) + " name=" + name + " call_id=" + callId + " args=" + AppLog.Truncate(arguments));
 
                         try
                         {
                             if (status != null)
                                 status("Running " + name + "...");
                             toolOutput = tools.Run(name, arguments);
+                            toolStopwatch.Stop();
+                            AppLog.Info("Tool call success: name=" + name + " call_id=" + callId + " elapsed_ms=" + toolStopwatch.ElapsedMilliseconds + " output_chars=" + (toolOutput ?? "").Length);
+                            AppLog.Debug("Tool call output: name=" + name + " call_id=" + callId + " output=" + AppLog.Truncate(toolOutput));
                         }
                         catch (Exception ex)
                         {
+                            toolStopwatch.Stop();
+                            AppLog.Error("Tool call failed: name=" + name + " call_id=" + callId + " elapsed_ms=" + toolStopwatch.ElapsedMilliseconds, ex);
                             toolOutput = "ERROR: " + ex.Message;
                         }
 
@@ -97,13 +120,29 @@ namespace AgentReadonly.Services
                 {
                     if (status != null)
                         status("Ready");
+                    AppLog.Info("Prompt send complete: final_chars=" + final.Length + " rounds=" + (round + 1));
                     return final.ToString();
                 }
 
+                AppLog.Info("Agent round tool outputs queued: round=" + (round + 1) + " count=" + toolOutputs.Count);
                 input = toolOutputs;
             }
 
+            AppLog.Error("Prompt send failed: exceeded max tool rounds=" + MaxToolRounds, null);
             throw new InvalidOperationException("Stopped after " + MaxToolRounds + " tool rounds.");
+        }
+
+        private string DescribeInput(object input)
+        {
+            string text = input as string;
+            if (text != null)
+                return "user_text chars=" + text.Length;
+
+            List<Dictionary<string, object>> toolOutputs = input as List<Dictionary<string, object>>;
+            if (toolOutputs != null)
+                return "tool_outputs count=" + toolOutputs.Count;
+
+            return input == null ? "null" : input.GetType().Name;
         }
 
         private List<Dictionary<string, object>> ToolDefinitions()

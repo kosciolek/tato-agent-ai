@@ -1,10 +1,8 @@
-/tato-agent-ai
 /*.exe
 /*.jsonl
-/.openai-token
 .openai-api-key
 /dist/
-agent-readonly/bin/
-agent-readonly/obj/
+/bin/
+/obj/
 /.DS_Store
 /.vscode/

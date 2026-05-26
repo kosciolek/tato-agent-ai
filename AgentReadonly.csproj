@@ -77,10 +77,14 @@
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Services\AgentSession.cs" />
+    <Compile Include="Services\AppLog.cs" />
     <Compile Include="Services\AppPaths.cs" />
     <Compile Include="Services\AppSettings.cs" />
     <Compile Include="Services\OpenAiClient.cs" />
     <Compile Include="Services\ReadOnlyTools.cs" />
+    <Compile Include="Services\UpdateChecker.cs" />
+    <Compile Include="Services\UpdateInstaller.cs" />
+    <Compile Include="Services\UsageLedger.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="CONTEXT.example.md" />

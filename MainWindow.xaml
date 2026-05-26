@@ -11,6 +11,18 @@
     <ToolBarTray DockPanel.Dock="Top" Background="{StaticResource PanelBrush}">
       <ToolBar Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrushMuted}">
         <Button x:Name="ChooseFolderButton" Content="Folder..." Padding="10,4" Click="ChooseFolder_Click" />
+        <StackPanel Width="360" Margin="8,0,4,0" VerticalAlignment="Center">
+          <TextBlock x:Name="FolderPathText"
+                     Foreground="{StaticResource TextBrush}"
+                     FontWeight="SemiBold"
+                     FontSize="15"
+                     TextTrimming="CharacterEllipsis"
+                     ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+          <TextBlock x:Name="SpendText"
+                     Foreground="{StaticResource MutedTextBrush}"
+                     FontSize="14"
+                     TextTrimming="CharacterEllipsis" />
+        </StackPanel>
         <Separator />
         <TextBlock Text="Model" VerticalAlignment="Center" Margin="8,0,4,0" />
         <TextBox x:Name="ModelBox" Width="140" MinWidth="120" Padding="4,2" LostFocus="ModelBox_LostFocus" />
@@ -22,15 +34,17 @@
         <Button Content="Clear" Padding="10,4" Click="Clear_Click" />
         <Button x:Name="StopButton" Content="Stop" Padding="10,4" IsEnabled="False" Click="Stop_Click" />
         <Separator />
+        <Button x:Name="UpdateButton"
+                Content="Update"
+                Padding="10,4"
+                Visibility="Collapsed"
+                Click="Update_Click" />
+        <Separator />
         <Border Background="{StaticResource ReadonlyBrush}" CornerRadius="3" Padding="8,3" Margin="4,0">
           <TextBlock Text="READONLY" Foreground="White" FontWeight="SemiBold" />
         </Border>
       </ToolBar>
     </ToolBarTray>
-
-    <Border DockPanel.Dock="Top" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrushMuted}" BorderThickness="0,0,0,1" Padding="10,6">
-      <TextBlock x:Name="FolderText" Foreground="{StaticResource MutedTextBrush}" TextTrimming="CharacterEllipsis" />
-    </Border>
 
     <Grid>
       <Grid.RowDefinitions>
