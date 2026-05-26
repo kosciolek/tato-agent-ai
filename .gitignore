@@ -1,0 +1,5 @@
+/tato-agent-ai
+/*.exe
+/*.jsonl
+/dist/
+/.DS_Store

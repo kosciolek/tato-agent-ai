@@ -1,0 +1,53 @@
+name: build-and-release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.20.x'
+      - run: go test ./...
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.20.x'
+      - name: Build Windows artifacts
+        run: |
+          mkdir -p dist
+          GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/tato-agent-ai-windows-amd64.exe ./cmd/tato-agent-ai
+          GOOS=windows GOARCH=386 go build -trimpath -ldflags="-s -w" -o dist/tato-agent-ai-windows-386.exe ./cmd/tato-agent-ai
+          cd dist
+          zip tato-agent-ai-windows-amd64.zip tato-agent-ai-windows-amd64.exe
+          zip tato-agent-ai-windows-386.zip tato-agent-ai-windows-386.exe
+      - name: Move latest tag
+        run: |
+          git tag -f latest
+          git push -f origin latest
+      - name: Publish latest release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: latest
+          body: Automated build from main.
+          prerelease: false
+          make_latest: true
+          files: |
+            dist/tato-agent-ai-windows-amd64.zip
+            dist/tato-agent-ai-windows-386.zip
