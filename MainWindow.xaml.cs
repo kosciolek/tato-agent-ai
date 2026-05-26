@@ -31,6 +31,7 @@ namespace AgentReadonly
         private CancellationTokenSource updateLoop;
         private UpdateCheckResult pendingUpdate;
         private bool updateInstalling;
+        private bool updatePromptShown;
 
         public MainWindow()
         {
@@ -255,6 +256,11 @@ namespace AgentReadonly
 
         private async void Update_Click(object sender, RoutedEventArgs e)
         {
+            await InstallPendingUpdateAsync();
+        }
+
+        private async Task InstallPendingUpdateAsync()
+        {
             if (pendingUpdate == null || updateInstalling)
                 return;
 
@@ -343,6 +349,20 @@ namespace AgentReadonly
                 UpdateButton.Content = "Update";
                 UpdateButton.IsEnabled = true;
                 UpdateButton.Visibility = Visibility.Visible;
+
+                if (!updatePromptShown)
+                {
+                    updatePromptShown = true;
+                    MessageBoxResult promptResult = MessageBox.Show(
+                        this,
+                        "A new update is ready. Install it now? The app will restart after the update is staged.",
+                        "Update available",
+                        MessageBoxButton.OKCancel,
+                        MessageBoxImage.Information);
+
+                    if (promptResult == MessageBoxResult.OK)
+                        _ = InstallPendingUpdateAsync();
+                }
             }
             else
             {

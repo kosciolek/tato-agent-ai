@@ -36,13 +36,15 @@
         <Separator />
         <Button x:Name="UpdateButton"
                 Content="Update"
-                Padding="10,4"
+                MinWidth="76"
+                Padding="14,5"
+                Margin="4,0"
+                Background="#C9342E"
+                BorderBrush="#9F241F"
+                Foreground="White"
+                FontWeight="SemiBold"
                 Visibility="Collapsed"
                 Click="Update_Click" />
-        <Separator />
-        <Border Background="{StaticResource ReadonlyBrush}" CornerRadius="3" Padding="8,3" Margin="4,0">
-          <TextBlock Text="READONLY" Foreground="White" FontWeight="SemiBold" />
-        </Border>
       </ToolBar>
     </ToolBarTray>
 
