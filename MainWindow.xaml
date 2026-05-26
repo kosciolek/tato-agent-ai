@@ -26,7 +26,12 @@
         </StackPanel>
         <Separator />
         <TextBlock Text="Model" VerticalAlignment="Center" Margin="8,0,4,0" />
-        <TextBox x:Name="ModelBox" Width="140" MinWidth="120" Padding="4,2" LostFocus="ModelBox_LostFocus" />
+        <ComboBox x:Name="ModelBox"
+                  Width="180"
+                  MinWidth="160"
+                  Padding="4,2"
+                  IsEditable="False"
+                  SelectionChanged="ModelBox_SelectionChanged" />
         <Separator />
         <Button Content="A-" Padding="8,4" ToolTip="Decrease font size" Click="DecreaseFont_Click" />
         <TextBlock x:Name="FontSizeText" Width="42" TextAlignment="Center" VerticalAlignment="Center" />

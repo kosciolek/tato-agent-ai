@@ -19,6 +19,30 @@ namespace AgentReadonly
 {
     public partial class MainWindow : Window
     {
+        private const string DefaultModel = "gpt-5.5";
+        private static readonly string[] ModelChoices =
+        {
+            "gpt-5.5",
+            "gpt-5.5-pro",
+            "gpt-5.4",
+            "gpt-5.4-mini",
+            "gpt-5.4-nano",
+            "gpt-5.2",
+            "gpt-5.2-pro",
+            "gpt-5.1",
+            "gpt-5.1-mini",
+            "gpt-5",
+            "gpt-5-mini",
+            "gpt-5-nano",
+            "gpt-4.1",
+            "gpt-4.1-mini",
+            "gpt-4.1-nano",
+            "gpt-4o",
+            "gpt-4o-mini",
+            "o3",
+            "o4-mini"
+        };
+
         private readonly List<ChatMessage> messages = new List<ChatMessage>();
         private AppSettings settings;
         private AgentSession session;
@@ -32,6 +56,7 @@ namespace AgentReadonly
         private UpdateCheckResult pendingUpdate;
         private bool updateInstalling;
         private bool updatePromptShown;
+        private bool suppressModelSelectionChanged;
 
         public MainWindow()
         {
@@ -41,7 +66,7 @@ namespace AgentReadonly
             TranscriptBox.Document = new FlowDocument();
             settings = AppSettings.Load();
             usageSummary = usageLedger.LoadSummary();
-            ModelBox.Text = settings.Model;
+            InitializeModelBox();
             ApplyFontSize();
             UpdateFolderText();
             UpdateSpendText();
@@ -116,9 +141,9 @@ namespace AgentReadonly
                 return;
             }
 
-            string model = ModelBox.Text.Trim();
+            string model = SelectedModel();
             if (string.IsNullOrWhiteSpace(model))
-                model = "gpt-5.5";
+                model = DefaultModel;
 
             settings.Model = model;
             settings.Save();
@@ -203,11 +228,14 @@ namespace AgentReadonly
             }
         }
 
-        private void ModelBox_LostFocus(object sender, RoutedEventArgs e)
+        private void ModelBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            string model = ModelBox.Text.Trim();
+            if (suppressModelSelectionChanged || settings == null)
+                return;
+
+            string model = SelectedModel();
             if (string.IsNullOrWhiteSpace(model))
-                model = "gpt-5.5";
+                model = DefaultModel;
             if (!string.Equals(settings.Model, model, StringComparison.Ordinal))
             {
                 settings.Model = model;
@@ -216,7 +244,6 @@ namespace AgentReadonly
                 AppLog.Info("Model changed: " + model);
                 AddSystemMessage("Model set to: " + model);
             }
-            ModelBox.Text = model;
         }
 
         private void DecreaseFont_Click(object sender, RoutedEventArgs e)
@@ -433,6 +460,48 @@ namespace AgentReadonly
             TranscriptBox.FontSize = settings.FontSize;
             TranscriptBox.Document.FontSize = settings.FontSize;
             TranscriptBox.Document.FontFamily = new FontFamily("Segoe UI");
+        }
+
+        private void InitializeModelBox()
+        {
+            suppressModelSelectionChanged = true;
+            try
+            {
+                ModelBox.Items.Clear();
+                foreach (string model in ModelChoices)
+                    ModelBox.Items.Add(model);
+
+                string selected = IsKnownModel(settings.Model) ? settings.Model : DefaultModel;
+                if (!string.Equals(settings.Model, selected, StringComparison.Ordinal))
+                {
+                    AppLog.Warn("Saved model is not in the shipped model list, falling back: " + (settings.Model ?? ""));
+                    settings.Model = selected;
+                    settings.Save();
+                }
+                ModelBox.SelectedItem = selected;
+            }
+            finally
+            {
+                suppressModelSelectionChanged = false;
+            }
+        }
+
+        private string SelectedModel()
+        {
+            return Convert.ToString(ModelBox.SelectedItem ?? "").Trim();
+        }
+
+        private bool IsKnownModel(string model)
+        {
+            if (string.IsNullOrWhiteSpace(model))
+                return false;
+
+            foreach (string choice in ModelChoices)
+            {
+                if (string.Equals(choice, model.Trim(), StringComparison.Ordinal))
+                    return true;
+            }
+            return false;
         }
 
         private void AddUserMessage(string text)
