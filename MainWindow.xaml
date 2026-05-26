@@ -95,10 +95,10 @@
           <TextBox x:Name="PromptBox"
                    Grid.Column="0"
                    MinHeight="76"
-                   MaxHeight="220"
                    AcceptsReturn="True"
                    TextWrapping="Wrap"
                    VerticalScrollBarVisibility="Auto"
+                   VerticalAlignment="Stretch"
                    Padding="10"
                    FontFamily="Segoe UI"
                    KeyDown="PromptBox_KeyDown" />
