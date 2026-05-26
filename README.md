@@ -9,7 +9,7 @@ Private minimal coding agent harness for local code work.
 - Local file listing, reading, text search, file writing, and shell command execution.
 - Ask-before-write/execute by default.
 - `--bypass-permissions` mode for unattended local side effects.
-- Optional OpenAI-hosted web search.
+- OpenAI-hosted web search enabled by default.
 - Optional JSONL transcript logging.
 - No MCP support.
 
@@ -36,7 +36,6 @@ Useful flags:
 - `--model gpt-5.5`
 - `--cwd .`
 - `--bypass-permissions`
-- `--web-search`
 - `--transcript session.jsonl`
 
 Inside the prompt, type `/exit` or `/quit` to stop.

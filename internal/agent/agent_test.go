@@ -79,7 +79,7 @@ func TestAgentFeedsToolOutputBackToResponses(t *testing.T) {
 	}
 }
 
-func TestAgentAddsWebSearchToolWhenEnabled(t *testing.T) {
+func TestAgentAddsWebSearchTool(t *testing.T) {
 	client := &fakeClient{resps: []*openai.Response{
 		{
 			ID: "resp_1",
@@ -93,7 +93,6 @@ func TestAgentAddsWebSearchToolWhenEnabled(t *testing.T) {
 		Instructions: "test instructions",
 		Client:       client,
 		Tools:        fakeTools{},
-		WebSearch:    true,
 	})
 
 	if _, err := a.Send(context.Background(), "latest?"); err != nil {

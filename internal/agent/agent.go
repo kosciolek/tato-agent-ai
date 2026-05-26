@@ -29,7 +29,6 @@ type Config struct {
 	Client       ResponseClient
 	Tools        ToolRunner
 	Transcript   *transcript.Logger
-	WebSearch    bool
 }
 
 type Agent struct {
@@ -119,10 +118,7 @@ func (a *Agent) Send(ctx context.Context, userInput string) (string, error) {
 
 func (a *Agent) toolDefinitions() []openai.Tool {
 	defs := append([]openai.Tool{}, a.cfg.Tools.Definitions()...)
-	if a.cfg.WebSearch {
-		defs = append(defs, openai.Tool{Type: "web_search_preview"})
-	}
-	return defs
+	return append(defs, openai.Tool{Type: "web_search_preview"})
 }
 
 func formatCitations(annotations []openai.Annotation) string {
